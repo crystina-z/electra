@@ -272,6 +272,29 @@ def model_fn_builder(config: configure_pretraining.PretrainingConfig):
     model = PretrainingModel(config, features,
                              mode == tf.estimator.ModeKeys.TRAIN)
     utils.log("Model is built!")
+    init_checkpoint = config.init_checkpoint
+    tvars = tf.trainable_variables()
+    scaffold_fn = None
+    initialized_variable_names = []
+    if init_checkpoint:
+      assignment_map, initialized_variable_names = \
+        modeling.get_assignment_map_from_checkpoint(
+          tvars, init_checkpoint)
+      if config.use_tpu:
+        def tpu_scaffold():
+          tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+          return tf.train.Scaffold()
+        scaffold_fn = tpu_scaffold
+      else:
+        tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+    utils.log("**** Trainable Variables ****")
+    for var in tvars:
+      init_string = ""
+      if var.name in initialized_variable_names:
+        init_string = ", *INIT_FROM_CKPT*"
+      utils.log("  name = {}, shape = {}  {}".format(var.name, var.shape,
+                      init_string))
+
     if mode == tf.estimator.ModeKeys.TRAIN:
       train_op = optimization.create_optimizer(
           model.total_loss, config.learning_rate, config.num_train_steps,
